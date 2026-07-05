@@ -1,0 +1,22 @@
+{
+  "name": "signalk-vector-weather",
+  "version": "0.1.0",
+  "description": "Vector Weather forecast provider for Signal K Server",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "Apache-2.0",
+  "author": "Selkie Technologies",
+  "signalk": {
+    "displayName": "Vector Weather"
+  },
+  "keywords": [
+    "signalk",
+    "signalk-node-server-plugin",
+    "signalk-category-weather"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
