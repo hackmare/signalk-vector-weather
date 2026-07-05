@@ -25,10 +25,12 @@ Leave **Base URL** as the default unless you're pointed at a self-hosted or stag
 
 ## What it provides
 
-- `getObservations` — current conditions at a position (`type: 'observation'`)
-- `getForecasts(position, 'point')` — hourly forecast points
-- `getForecasts(position, 'daily')` — daily forecast summaries
+- `getObservations` — current conditions at a position (`type: 'observation'`), including wind. Also includes a `water.surfaceCurrentSpeed`/`surfaceCurrentDirection` block when Vector Weather's current-hazard-service has coverage at that position (most named passes/narrows/races; open water without a nearby station typically has none — this is normal, not an error).
+- `getForecasts(position, 'point')` — hourly forecast points (wind only; no current — see below)
+- `getForecasts(position, 'daily')` — daily forecast summaries (wind only)
 - `getWarnings` — not yet available from Vector Weather; always returns `[]`
+
+Current is only merged into `getObservations`, not into `getForecasts`. Vector Weather's current-hazard-service answers a point/time query (not a real forecast series), so folding it into every hourly/daily point would multiply backend calls for what's really a "now" overlay rather than a multi-day forecast — a current/wind field overlay on a chartplotter is inherently live, refreshed as you pan or as time passes, not something you browse three days out.
 
 ## Scope
 

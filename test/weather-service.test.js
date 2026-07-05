@@ -6,7 +6,8 @@ const {
   toISO,
   mapCurrentToObservation,
   mapHourlyToPointForecasts,
-  mapDailyToDailyForecasts
+  mapDailyToDailyForecasts,
+  mapAssessmentToWater
 } = require('../lib/weather-service')
 
 const SAMPLE_FORECAST = {
@@ -143,27 +144,53 @@ function fakeFetchReturning(body, { ok = true, status = 200 } = {}) {
   return impl
 }
 
-test('getObservations builds the expected request and maps the result', async () => {
-  const fetchImpl = fakeFetchReturning({ ok: true, forecast: SAMPLE_FORECAST })
+// Routes /api/signalk/forecast and /api/signalk/current to different
+// responses, since getObservations now calls both endpoints.
+function fakeFetchRouting({ forecast, current, currentOk = true }) {
+  const calls = []
+  const impl = async (url, opts) => {
+    calls.push({ url: String(url), opts })
+    const isCurrent = String(url).includes('/api/signalk/current')
+    if (isCurrent) {
+      return {
+        ok: currentOk,
+        status: currentOk ? 200 : 500,
+        json: async () => ({ ok: currentOk, current }),
+        text: async () => ''
+      }
+    }
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ ok: true, forecast }),
+      text: async () => ''
+    }
+  }
+  impl.calls = calls
+  return impl
+}
+
+test('getObservations builds the expected forecast request and maps the result', async () => {
+  const fetchImpl = fakeFetchRouting({ forecast: SAMPLE_FORECAST, current: null })
   const svc = createWeatherService({ apiKey: 'aw_test123', baseUrl: 'https://example.test', fetchImpl })
 
   const result = await svc.getObservations({ latitude: 49.2827, longitude: -123.1207 })
 
-  assert.equal(fetchImpl.calls.length, 1)
-  const { url, opts } = fetchImpl.calls[0]
-  assert.match(url, /^https:\/\/example\.test\/api\/signalk\/forecast\?/)
-  assert.match(url, /lat=49\.2827/)
-  assert.match(url, /lon=-123\.1207/)
-  assert.match(url, /forecast_days=1/)
-  assert.match(url, /past_days=1/)
-  assert.equal(opts.headers['X-Anchor-Weather-Key'], 'aw_test123')
+  const forecastCall = fetchImpl.calls.find((c) => c.url.includes('/forecast'))
+  assert.ok(forecastCall, 'expected a forecast request')
+  assert.match(forecastCall.url, /^https:\/\/example\.test\/api\/signalk\/forecast\?/)
+  assert.match(forecastCall.url, /lat=49\.2827/)
+  assert.match(forecastCall.url, /lon=-123\.1207/)
+  assert.match(forecastCall.url, /forecast_days=1/)
+  assert.match(forecastCall.url, /past_days=1/)
+  assert.equal(forecastCall.opts.headers['X-Anchor-Weather-Key'], 'aw_test123')
 
   assert.equal(result.length, 1)
   assert.equal(result[0].type, 'observation')
 })
 
-test('getForecasts("point") and getForecasts("daily") request forecast-only (past_days=0)', async () => {
-  const fetchImpl = fakeFetchReturning({ ok: true, forecast: SAMPLE_FORECAST })
+test('getForecasts("point") and getForecasts("daily") request forecast-only (past_days=0) and never touch /current', async () => {
+  const fetchImpl = fakeFetchRouting({ forecast: SAMPLE_FORECAST, current: null })
   const svc = createWeatherService({ apiKey: 'aw_test', baseUrl: 'https://example.test', fetchImpl })
   const position = { latitude: 49, longitude: -123 }
 
@@ -173,6 +200,72 @@ test('getForecasts("point") and getForecasts("daily") request forecast-only (pas
 
   const days = await svc.getForecasts(position, 'daily', { maxCount: 1 })
   assert.equal(days.length, 1)
+
+  assert.ok(fetchImpl.calls.every((c) => !c.url.includes('/current')), 'getForecasts must not call /current')
+})
+
+// --- current-field merge into getObservations ---------------------------
+
+test('mapAssessmentToWater converts knots/degrees into SignalK SI units', () => {
+  const water = mapAssessmentToWater({ current_speed_kn: 2.4, current_direction_deg: 210 })
+  assert.ok(Math.abs(water.surfaceCurrentSpeed - 1.2346656) < 1e-6)
+  assert.ok(Math.abs(water.surfaceCurrentDirection - 3.6651914291880923) < 1e-9)
+})
+
+test('mapAssessmentToWater returns undefined when there is no assessment or no current speed', () => {
+  assert.equal(mapAssessmentToWater(null), undefined)
+  assert.equal(mapAssessmentToWater(undefined), undefined)
+  assert.equal(mapAssessmentToWater({ current_speed_kn: null, current_direction_deg: null }), undefined)
+})
+
+test('getObservations merges current into water when current-hazard-service has coverage', async () => {
+  const fetchImpl = fakeFetchRouting({
+    forecast: SAMPLE_FORECAST,
+    current: { current_speed_kn: 2.4, current_direction_deg: 210, hazard_level: 'low' }
+  })
+  const svc = createWeatherService({ apiKey: 'aw_test', baseUrl: 'https://example.test', fetchImpl })
+
+  const [observation] = await svc.getObservations({ latitude: 49.2827, longitude: -123.1207 })
+
+  assert.ok(observation.water, 'expected a water block')
+  assert.ok(Math.abs(observation.water.surfaceCurrentSpeed - 1.2346656) < 1e-6)
+})
+
+test('getObservations omits water (but keeps wind) when current-hazard-service has no coverage at this position', async () => {
+  // fail-open at the backend: /current returns {ok: true, current: null} for
+  // open water with no nearby station/derived coverage.
+  const fetchImpl = fakeFetchRouting({ forecast: SAMPLE_FORECAST, current: null })
+  const svc = createWeatherService({ apiKey: 'aw_test', baseUrl: 'https://example.test', fetchImpl })
+
+  const [observation] = await svc.getObservations({ latitude: 49.2827, longitude: -123.1207 })
+
+  assert.equal(observation.water, undefined)
+  assert.ok(observation.wind.speedTrue > 0, 'wind must still be present')
+})
+
+test('getObservations omits water but still returns the observation when the /current request itself fails', async () => {
+  const fetchImpl = fakeFetchRouting({ forecast: SAMPLE_FORECAST, current: null, currentOk: false })
+  const svc = createWeatherService({ apiKey: 'aw_test', baseUrl: 'https://example.test', fetchImpl })
+
+  const [observation] = await svc.getObservations({ latitude: 49.2827, longitude: -123.1207 })
+
+  assert.equal(observation.water, undefined)
+  assert.equal(observation.type, 'observation')
+})
+
+test('a second getObservations call within the cache TTL does not re-fetch /current', async () => {
+  const fetchImpl = fakeFetchRouting({
+    forecast: SAMPLE_FORECAST,
+    current: { current_speed_kn: 2.4, current_direction_deg: 210 }
+  })
+  const svc = createWeatherService({ apiKey: 'aw_test', baseUrl: 'https://example.test', cacheTTLMinutes: 10, fetchImpl })
+  const position = { latitude: 49.2827, longitude: -123.1207 }
+
+  await svc.getObservations(position)
+  await svc.getObservations(position)
+
+  const currentCalls = fetchImpl.calls.filter((c) => c.url.includes('/current'))
+  assert.equal(currentCalls.length, 1)
 })
 
 test('getForecasts clamps maxCount into the 1-7 day range accepted by the backend', async () => {
@@ -192,8 +285,8 @@ test('getWarnings always resolves to an empty array', async () => {
   assert.deepEqual(await svc.getWarnings({ latitude: 0, longitude: 0 }), [])
 })
 
-test('repeated calls within the cache TTL do not re-fetch', async () => {
-  const fetchImpl = fakeFetchReturning({ ok: true, forecast: SAMPLE_FORECAST })
+test('repeated calls within the cache TTL do not re-fetch (forecast or current)', async () => {
+  const fetchImpl = fakeFetchRouting({ forecast: SAMPLE_FORECAST, current: null })
   const svc = createWeatherService({
     apiKey: 'aw_test',
     baseUrl: 'https://example.test',
@@ -206,17 +299,19 @@ test('repeated calls within the cache TTL do not re-fetch', async () => {
   await svc.getObservations(position)
   await svc.getObservations(position)
 
-  assert.equal(fetchImpl.calls.length, 1, 'expected the second and third calls to be served from cache')
+  // One forecast request + one current request, then served from cache.
+  assert.equal(fetchImpl.calls.length, 2, 'expected the 2nd and 3rd calls to be served entirely from cache')
 })
 
-test('a cache miss on a materially different position issues a new request', async () => {
-  const fetchImpl = fakeFetchReturning({ ok: true, forecast: SAMPLE_FORECAST })
+test('a cache miss on a materially different position issues new requests', async () => {
+  const fetchImpl = fakeFetchRouting({ forecast: SAMPLE_FORECAST, current: null })
   const svc = createWeatherService({ apiKey: 'aw_test', baseUrl: 'https://example.test', fetchImpl })
 
   await svc.getObservations({ latitude: 49.2827, longitude: -123.1207 })
   await svc.getObservations({ latitude: 10.0, longitude: 10.0 })
 
-  assert.equal(fetchImpl.calls.length, 2)
+  // 2 positions x (1 forecast + 1 current) each.
+  assert.equal(fetchImpl.calls.length, 4)
 })
 
 test('non-OK HTTP response surfaces as a rejected promise, not a silent empty result', async () => {
