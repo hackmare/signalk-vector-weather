@@ -1,9 +1,10 @@
 # signalk-vector-weather
 
-Signal K plugin that bridges a [Vector Weather](https://anchor-weather.selkietech.ca) account into two Signal K server APIs:
+Signal K plugin that bridges a [Vector Weather](https://anchor-weather.selkietech.ca) account into three Signal K server APIs:
 
 - **Weather API v2** — current conditions and forecasts, so any Weather-API-aware client (Freeboard-SK, etc.) displays Vector Weather data with no client-side code changes.
-- **Resources API** — any route you send to the boat from Vector Weather's Route Planner ("Send to boat") is synced as a standard `routes`/`waypoints` resource, so Freeboard-SK renders it with no plugin-specific code on its side either.
+- **Resources API (routes)** — any route you send to the boat from Vector Weather's Route Planner ("Send to boat") is synced as a standard `routes`/`waypoints` resource, so Freeboard-SK renders it with no plugin-specific code on its side either.
+- **Resources API (notes)** — weather-observation stations near the vessel show up as chart markers, with a popup summarizing current conditions at each one.
 
 This plugin does not compute anything itself — it's a thin bridge to Vector Weather's own backend.
 
@@ -43,6 +44,14 @@ This is publish-only and one-way: nothing can be triggered on Vector Weather fro
 
 Turn it off with **Sync routes shared with this boat** in Plugin Config if you only want the weather bridge.
 
+## Weather station markers
+
+Polls `GET /api/signalk/stations` (default every 15 minutes, configurable) for a bounding box around the vessel's own live position (`navigation.position`, read from the local Signal K data model — re-centered on every sync, so the marker set follows the boat), and writes each weather-observation station as a Signal K `notes` resource. Works with any active API key — no vessel scoping needed, since station data isn't tied to a specific boat.
+
+Each note's description carries every scalar field from Vector Weather's own station popup (position, provider, distance, current wind/pressure/air-temp/wave reading, freshness, and a short pressure/wind trend line) as plain text. It does **not** carry that popup's observed-vs-forecast wind timeline chart — a Note's description is plain text, and there's no way to transport a live chart widget through it.
+
+Configurable in Plugin Config: **Show nearby weather stations on the chart** (on/off), **Station sync radius (nm)** (default 25), **Max stations to show** (default 100, caps a station-dense area from flooding the chart), **Station sync interval (minutes)** (default 15). Like route syncing, a station that falls out of the vessel's vicinity on a later sync is removed from the chart, not left stale.
+
 ## Scope
 
-Read-only in one direction (weather in), publish-only in the other (routes out) — nothing on the boat can trigger, edit, or pay for anything in Vector Weather. It does not yet publish anchor plans or bolt-hole markers — see the Vector Weather Freeboard-SK feasibility analysis for the full phased plan.
+Read-only in one direction (weather + station observations in), publish-only in the other (routes out) — nothing on the boat can trigger, edit, or pay for anything in Vector Weather. It does not yet publish anchor plans or bolt-hole markers — see the Vector Weather Freeboard-SK feasibility analysis for the full phased plan.

@@ -29,7 +29,7 @@ test('plugin metadata', () => {
   assert.equal(typeof plugin.stop, 'function')
 })
 
-test('schema requires an API key and defaults baseUrl/cacheTTLMinutes/route sync fields', () => {
+test('schema requires an API key and defaults baseUrl/cacheTTLMinutes/route+station sync fields', () => {
   const plugin = createPlugin(fakeApp())
   const schema = plugin.schema()
   assert.deepEqual(schema.required, ['apiKey'])
@@ -37,6 +37,10 @@ test('schema requires an API key and defaults baseUrl/cacheTTLMinutes/route sync
   assert.equal(schema.properties.cacheTTLMinutes.default, 10)
   assert.equal(schema.properties.enableRouteSync.default, true)
   assert.equal(schema.properties.routeSyncIntervalMinutes.default, 15)
+  assert.equal(schema.properties.enableStationSync.default, true)
+  assert.equal(schema.properties.stationSyncRadiusNm.default, 25)
+  assert.equal(schema.properties.stationSyncLimit.default, 100)
+  assert.equal(schema.properties.stationSyncIntervalMinutes.default, 15)
 })
 
 test('enableRouteSync: false never touches resourcesApi, even with it present', async () => {
@@ -45,8 +49,22 @@ test('enableRouteSync: false never touches resourcesApi, even with it present', 
   app.resourcesApi = { setResource: () => { setResourceCalls++ } }
   const plugin = createPlugin(app)
 
-  plugin.start({ apiKey: 'aw_test123', enableRouteSync: false })
+  plugin.start({ apiKey: 'aw_test123', enableRouteSync: false, enableStationSync: false })
   // Let any stray microtask/timer callback have a chance to run.
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(setResourceCalls, 0)
+  plugin.stop()
+})
+
+test('enableStationSync: false never touches resourcesApi, even with it present', async () => {
+  const app = fakeApp()
+  app.getSelfPath = () => ({ latitude: 49, longitude: -123 })
+  let setResourceCalls = 0
+  app.resourcesApi = { setResource: () => { setResourceCalls++ } }
+  const plugin = createPlugin(app)
+
+  plugin.start({ apiKey: 'aw_test123', enableRouteSync: false, enableStationSync: false })
   await new Promise((resolve) => setImmediate(resolve))
 
   assert.equal(setResourceCalls, 0)

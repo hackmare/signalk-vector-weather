@@ -1,5 +1,6 @@
 const { createWeatherService } = require('./lib/weather-service')
 const { createRouteSync } = require('./lib/route-sync')
+const { createStationSync } = require('./lib/station-sync')
 
 const DEFAULT_BASE_URL = 'https://anchor-weather.selkietech.ca'
 
@@ -39,6 +40,31 @@ const CONFIG_SCHEMA = {
       title: 'Route sync interval (minutes)',
       default: 15,
       description: 'How often to check for routes sent to this boat.'
+    },
+    enableStationSync: {
+      type: 'boolean',
+      title: 'Show nearby weather stations on the chart',
+      default: true,
+      description:
+        'Syncs weather-observation stations near the vessel as SignalK Notes (chart markers with a popup summary of current conditions). Works with any active API key, no vessel scoping needed.'
+    },
+    stationSyncRadiusNm: {
+      type: 'number',
+      title: 'Station sync radius (nm)',
+      default: 25,
+      description: 'How far around the vessel\'s current position to look for stations.'
+    },
+    stationSyncLimit: {
+      type: 'number',
+      title: 'Max stations to show',
+      default: 100,
+      description: 'Caps how many station markers get synced at once, in case of a station-dense area.'
+    },
+    stationSyncIntervalMinutes: {
+      type: 'number',
+      title: 'Station sync interval (minutes)',
+      default: 15,
+      description: 'How often to re-check for nearby stations as the vessel moves.'
     }
   }
 }
@@ -46,6 +72,7 @@ const CONFIG_SCHEMA = {
 module.exports = function (app) {
   let weatherService = null
   let routeSync = null
+  let stationSync = null
 
   const plugin = {
     id: 'signalk-vector-weather',
@@ -91,6 +118,18 @@ module.exports = function (app) {
           routeSync.start(options.routeSyncIntervalMinutes)
         }
 
+        if (options.enableStationSync !== false) {
+          stationSync = createStationSync({
+            apiKey: options.apiKey,
+            baseUrl,
+            app,
+            log: app.debug,
+            radiusNm: options.stationSyncRadiusNm,
+            limit: options.stationSyncLimit
+          })
+          stationSync.start(options.stationSyncIntervalMinutes)
+        }
+
         app.setPluginStatus('Started')
       } catch (err) {
         app.setPluginError(err.message)
@@ -103,6 +142,10 @@ module.exports = function (app) {
       if (routeSync) {
         routeSync.stop()
         routeSync = null
+      }
+      if (stationSync) {
+        stationSync.stop()
+        stationSync = null
       }
       app.setPluginStatus('Stopped')
     }
