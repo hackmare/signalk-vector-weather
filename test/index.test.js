@@ -29,18 +29,37 @@ test('plugin metadata', () => {
   assert.equal(typeof plugin.stop, 'function')
 })
 
-test('schema requires an API key and defaults baseUrl/cacheTTLMinutes', () => {
+test('schema requires an API key and defaults baseUrl/cacheTTLMinutes/route sync fields', () => {
   const plugin = createPlugin(fakeApp())
   const schema = plugin.schema()
   assert.deepEqual(schema.required, ['apiKey'])
   assert.equal(schema.properties.baseUrl.default, 'https://anchor-weather.selkietech.ca')
   assert.equal(schema.properties.cacheTTLMinutes.default, 10)
+  assert.equal(schema.properties.enableRouteSync.default, true)
+  assert.equal(schema.properties.routeSyncIntervalMinutes.default, 15)
+})
+
+test('enableRouteSync: false never touches resourcesApi, even with it present', async () => {
+  const app = fakeApp()
+  let setResourceCalls = 0
+  app.resourcesApi = { setResource: () => { setResourceCalls++ } }
+  const plugin = createPlugin(app)
+
+  plugin.start({ apiKey: 'aw_test123', enableRouteSync: false })
+  // Let any stray microtask/timer callback have a chance to run.
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(setResourceCalls, 0)
+  plugin.stop()
 })
 
 test('start() registers a weather provider named "Vector Weather" with all three methods', () => {
   const app = fakeApp()
   const plugin = createPlugin(app)
 
+  // No app.resourcesApi on this fakeApp, so route sync's periodic check is a
+  // no-op (see test/route-sync.test.js for real sync behavior) — stop()
+  // still called for hygiene, to clear the interval it starts regardless.
   plugin.start({ apiKey: 'aw_test123' })
 
   assert.deepEqual(app._calls.status, ['Started'])
@@ -51,6 +70,8 @@ test('start() registers a weather provider named "Vector Weather" with all three
   for (const m of ['getObservations', 'getForecasts', 'getWarnings']) {
     assert.equal(typeof app._registeredProvider.methods[m], 'function', `methods.${m} should be a function`)
   }
+
+  plugin.stop()
 })
 
 test('start() without an API key sets a plugin error and does not register a provider', () => {

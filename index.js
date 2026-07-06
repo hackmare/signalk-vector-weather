@@ -1,4 +1,5 @@
 const { createWeatherService } = require('./lib/weather-service')
+const { createRouteSync } = require('./lib/route-sync')
 
 const DEFAULT_BASE_URL = 'https://anchor-weather.selkietech.ca'
 
@@ -24,12 +25,27 @@ const CONFIG_SCHEMA = {
       title: 'Cache TTL (minutes)',
       default: 10,
       description: 'How long to reuse a fetched forecast before requesting a fresh one.'
+    },
+    enableRouteSync: {
+      type: 'boolean',
+      title: 'Sync routes shared with this boat',
+      default: true,
+      description:
+        'Requires a vessel-scoped API key (created via "Create key for this vessel" in Vector Weather). ' +
+        'Publishes any route sent to this boat as a SignalK route/waypoints resource; harmless (just skipped) with an account-only key.'
+    },
+    routeSyncIntervalMinutes: {
+      type: 'number',
+      title: 'Route sync interval (minutes)',
+      default: 15,
+      description: 'How often to check for routes sent to this boat.'
     }
   }
 }
 
 module.exports = function (app) {
   let weatherService = null
+  let routeSync = null
 
   const plugin = {
     id: 'signalk-vector-weather',
@@ -46,9 +62,11 @@ module.exports = function (app) {
           throw new Error('Vector Weather API Key is required — see plugin config.')
         }
 
+        const baseUrl = options.baseUrl || DEFAULT_BASE_URL
+
         weatherService = createWeatherService({
           apiKey: options.apiKey,
-          baseUrl: options.baseUrl || DEFAULT_BASE_URL,
+          baseUrl,
           cacheTTLMinutes: options.cacheTTLMinutes,
           log: app.debug
         })
@@ -63,6 +81,16 @@ module.exports = function (app) {
           }
         })
 
+        if (options.enableRouteSync !== false) {
+          routeSync = createRouteSync({
+            apiKey: options.apiKey,
+            baseUrl,
+            app,
+            log: app.debug
+          })
+          routeSync.start(options.routeSyncIntervalMinutes)
+        }
+
         app.setPluginStatus('Started')
       } catch (err) {
         app.setPluginError(err.message)
@@ -72,6 +100,10 @@ module.exports = function (app) {
 
     stop() {
       weatherService = null
+      if (routeSync) {
+        routeSync.stop()
+        routeSync = null
+      }
       app.setPluginStatus('Stopped')
     }
   }

@@ -1,8 +1,11 @@
 # signalk-vector-weather
 
-Signal K Weather Provider plugin that bridges a [Vector Weather](https://anchor-weather.selkietech.ca) account into Signal K's [Weather API v2](https://demo.signalk.org/documentation/develop/rest_api/weather.html), so any Weather-API-aware client (Freeboard-SK, etc.) can display Vector Weather forecasts with no client-side code changes.
+Signal K plugin that bridges a [Vector Weather](https://anchor-weather.selkietech.ca) account into two Signal K server APIs:
 
-This plugin does not compute anything itself — it fetches from Vector Weather's existing `GET /api/signalk/forecast` endpoint and reshapes the response into the Signal K `WeatherData` shape (SI units: Kelvin, Pa, ratio 0–1, radians).
+- **Weather API v2** — current conditions and forecasts, so any Weather-API-aware client (Freeboard-SK, etc.) displays Vector Weather data with no client-side code changes.
+- **Resources API** — any route you send to the boat from Vector Weather's Route Planner ("Send to boat") is synced as a standard `routes`/`waypoints` resource, so Freeboard-SK renders it with no plugin-specific code on its side either.
+
+This plugin does not compute anything itself — it's a thin bridge to Vector Weather's own backend.
 
 ## Install
 
@@ -18,7 +21,7 @@ Then restart the server and enable the plugin from **Server -> Plugin Config -> 
 ## Configure
 
 1. Sign in to your Vector Weather account and go to **Account -> API Keys**.
-2. Create a key for the vessel this Signal K server represents.
+2. Create a key, picking the vessel this Signal K server represents — required for route syncing (see below); weather-only use works with an unscoped key too.
 3. Paste the key into the plugin's **Vector Weather API Key** field in Plugin Config and save.
 
 Leave **Base URL** as the default unless you're pointed at a self-hosted or staging Vector Weather instance.
@@ -32,6 +35,14 @@ Leave **Base URL** as the default unless you're pointed at a self-hosted or stag
 
 Current is only merged into `getObservations`, not into `getForecasts`. Vector Weather's current-hazard-service answers a point/time query (not a real forecast series), so folding it into every hourly/daily point would multiply backend calls for what's really a "now" overlay rather than a multi-day forecast — a current/wind field overlay on a chartplotter is inherently live, refreshed as you pan or as time passes, not something you browse three days out.
 
+## Route syncing ("Send to boat")
+
+If the plugin's API key is scoped to a vessel, it polls `GET /api/signalk/routes/pending` (default every 15 minutes, configurable) for any route plan currently shared with that vessel from Vector Weather's Route Planner, and writes it into the local Signal K server's Resources API (`app.resourcesApi.setResource('routes'|'waypoints', ...)`) — this requires a resource provider to be enabled on the server (the standard `@signalk/resources-provider` plugin, on by default on most installs).
+
+This is publish-only and one-way: nothing can be triggered on Vector Weather from the boat. Unpublishing a route in Vector Weather removes it from the boat on the next sync. Resource ids are stable (derived from the route's own id), so re-syncing an unchanged route updates the same resource rather than duplicating it.
+
+Turn it off with **Sync routes shared with this boat** in Plugin Config if you only want the weather bridge.
+
 ## Scope
 
-This is a read-only bridge for weather data. It does not publish routes, waypoints, or anchor plans — see the [Vector Weather Freeboard-SK feasibility analysis] for the full phased plan, of which this plugin is Phase 1.
+Read-only in one direction (weather in), publish-only in the other (routes out) — nothing on the boat can trigger, edit, or pay for anything in Vector Weather. It does not yet publish anchor plans or bolt-hole markers — see the Vector Weather Freeboard-SK feasibility analysis for the full phased plan.
