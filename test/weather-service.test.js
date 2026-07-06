@@ -20,7 +20,8 @@ const SAMPLE_FORECAST = {
     precipitation: 0.2,
     weather_code: 2,
     pressure_msl: 1013.2,
-    cloud_cover: 40
+    cloud_cover: 40,
+    relative_humidity_2m: 65
   },
   hourly: {
     time: ['2026-07-05T14:00', '2026-07-05T15:00', '2026-07-05T16:00'],
@@ -32,7 +33,9 @@ const SAMPLE_FORECAST = {
     wind_speed_10m: [12.0, 13.5, 14.0],
     wind_direction_10m: [270, 275, 280],
     wind_gusts_10m: [18.0, 19.0, 20.0],
-    dew_point_2m: [10.1, 9.8, 9.5]
+    dew_point_2m: [10.1, 9.8, 9.5],
+    relative_humidity_2m: [65, 68, 72],
+    precipitation: [0.0, 0.1, 0.3]
   },
   daily: {
     time: ['2026-07-05', '2026-07-06'],
@@ -74,6 +77,7 @@ test('mapCurrentToObservation maps units into SignalK SI shape', () => {
   assert.equal(obs.outside.pressure, 101320)
   assert.equal(obs.outside.cloudCover, 0.4)
   assert.ok(Math.abs(obs.outside.precipitationVolume - 0.0002) < 1e-12)
+  assert.equal(obs.outside.relativeHumidity, 0.65)
   assert.ok(Math.abs(obs.wind.speedTrue - 6.173328) < 1e-9)
   assert.ok(Math.abs(obs.wind.directionTrue - 4.71238898038469) < 1e-9)
 })
@@ -91,6 +95,8 @@ test('mapHourlyToPointForecasts maps every hour by default', () => {
   assert.equal(points[0].type, 'point')
   assert.equal(points[2].description, 'Slight rain')
   assert.equal(points[1].outside.horizontalVisibility, 22000)
+  assert.equal(points[1].outside.relativeHumidity, 0.68)
+  assert.ok(Math.abs(points[2].outside.precipitationVolume - 0.0003) < 1e-12)
 })
 
 test('mapHourlyToPointForecasts respects maxCount', () => {
