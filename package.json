@@ -6,8 +6,18 @@
   "scripts": {
     "test": "node --test"
   },
-  "license": "Apache-2.0",
-  "author": "Selkie Technologies",
+  "license": "MIT",
+  "author": "Morgane Oger",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hackmare/signalk-vector-weather.git"
+  },
+  "files": [
+    "index.js",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
   "signalk": {
     "displayName": "Vector Weather"
   },
