@@ -8,6 +8,15 @@ Signal K plugin that bridges a [Vector Weather](https://anchor-weather.selkietec
 
 This plugin does not compute anything itself — it's a thin bridge to Vector Weather's own backend.
 
+[Vector Weather](https://vector-weather.selkietech.ca) is a hyperlocal weather routing and anchoring platform from [Selkie Technologies](https://selkietech.ca) — it has free components, but is overall a fee-for-service product. See the [user guide](https://vector-weather.selkietech.ca/guide) (requires a Vector Weather account login) for the app itself; this repo covers only the SignalK/Freeboard-SK bridge.
+
+## Requirements
+
+- **Node.js 18+** on the SignalK server (this plugin uses the global `fetch` API; no npm dependencies of its own).
+- A **Vector Weather account** with an API key (**Account -> API Keys** in the app) — a free account is enough for the weather bridge; route syncing needs a key scoped to a vessel (see Configure, below).
+- **SignalK server with Weather API v2 support**, for the weather bridge. An older server without it fails loudly — the plugin sets a clear plugin error ("Weather API is not available on this server").
+- **A registered Resources API provider** (the standard `@signalk/resources-provider` plugin, enabled by default on most installs), for route syncing and station markers. Missing this fails quietly — the plugin logs `resourcesApi not available on this server` rather than erroring, since it's an optional feature relative to the weather bridge.
+
 ## Install
 
 Install on your vessel's Signal K server via the App Store, or:
