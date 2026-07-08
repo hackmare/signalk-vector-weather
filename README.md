@@ -39,9 +39,11 @@ Leave **Base URL** as the default unless you're pointed at a self-hosted or stag
 ## What it provides
 
 - `getObservations` — current conditions at a position (`type: 'observation'`), including wind. Also includes a `water.surfaceCurrentSpeed`/`surfaceCurrentDirection` block when Vector Weather's current-hazard-service has coverage at that position (most named passes/narrows/races; open water without a nearby station typically has none — this is normal, not an error).
-- `getForecasts(position, 'point')` — hourly forecast points (wind only; no current — see below)
+- `getForecasts(position, 'point')` — hourly forecast points, starting at the current hour. The upstream series opens at 00:00 UTC of the current day, so elapsed hours are trimmed (with a 1-hour grace) — otherwise a client that renders the first N points it receives (Freeboard-SK slices to 12) would show hours already in the past for positions west of UTC.
 - `getForecasts(position, 'daily')` — daily forecast summaries (wind only)
 - `getWarnings` — not yet available from Vector Weather; always returns `[]`
+
+Relative humidity is emitted as the SI-correct `outside.relativeHumidity` (0–1 ratio) **and** mirrored into `outside.absoluteHumidity`, because Freeboard-SK's weather display reads `absoluteHumidity` (×100, labelled "%") for its humidity row — without the mirror that column shows `--`.
 
 Current is only merged into `getObservations`, not into `getForecasts`. Vector Weather's current-hazard-service answers a point/time query (not a real forecast series), so folding it into every hourly/daily point would multiply backend calls for what's really a "now" overlay rather than a multi-day forecast — a current/wind field overlay on a chartplotter is inherently live, refreshed as you pan or as time passes, not something you browse three days out.
 
@@ -60,6 +62,17 @@ Polls `GET /api/signalk/stations` (default every 15 minutes, configurable) for a
 Each note's description carries every scalar field from Vector Weather's own station popup (position, provider, distance, current wind/pressure/air-temp/wave reading, freshness, and a short pressure/wind trend line) as plain text. It does **not** carry that popup's observed-vs-forecast wind timeline chart — a Note's description is plain text, and there's no way to transport a live chart widget through it.
 
 Configurable in Plugin Config: **Show nearby weather stations on the chart** (on/off), **Station sync radius (nm)** (default 25), **Max stations to show** (default 100, caps a station-dense area from flooding the chart), **Station sync interval (minutes)** (default 15). Like route syncing, a station that falls out of the vessel's vicinity on a later sync is removed from the chart, not left stale.
+
+## Meteo (Weather) layer — structured station markers
+
+Optionally publishes the same nearby stations as SignalK `meteo.*` **stream contexts**, so Freeboard-SK renders them on its dedicated **Meteo (Weather)** layer with structured, unit-formatted data instead of the plain-text Note pins above. Off by default — enable **Publish nearby stations to the Meteo (Weather) layer** in Plugin Config. It reuses the same bbox/position/interval machinery (its own **Meteo sync radius/limit/interval** knobs, defaults 25 nm / 100 / 15 min) and reads the structured `observation`/`identity` blocks now returned by `GET /api/signalk/stations`, converting to SI and emitting `environment.*` deltas via `app.handleMessage`.
+
+Each station becomes a context `meteo.urn:mrn:vectorweather:VW:<9-digit hash of the station id>` (a self-owned namespace, so it can't collide with real AIS/vessel MMSI contexts; Freeboard displays it as `VW:123456789`). Emitted paths: `environment.wind.averageSpeed`/`speedTrue`/`gust`/`directionTrue`, `environment.outside.temperature`/`pressure`, `environment.water.temperature`, `environment.water.waves.significantHeight` — each with `meta` units, and any whose reading is missing is omitted.
+
+Two caveats worth knowing:
+
+- **Freeboard 2.22.1's meteo popup renders only temperature and wind** (direction + average speed). Pressure, gust, waves and sea-surface temperature still ride the stream — visible in the Signal K Data Browser and rendered by newer/master Freeboard's generic `environment.*` popup — but not shown by 2.22.1's meteo popup. That's why this ships **additive and off by default**: the plain-text Note markers still carry every scalar, so you don't lose detail. Run both, or switch once your Freeboard build shows the richer meteo popup.
+- **There is no way to actively remove a stream marker** — SignalK stream contexts have no delete API and no server-side TTL, and Freeboard ignores a null position for meteo. A station that leaves the bbox is simply no longer refreshed; its marker lingers until the client ages it out on its own timer.
 
 ## Scope
 

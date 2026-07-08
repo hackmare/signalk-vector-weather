@@ -2,6 +2,17 @@
 
 All notable changes to this project are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Meteo (Weather) layer support (opt-in, off by default): publishes nearby weather stations as SignalK `meteo.*` stream contexts (`meteo.urn:mrn:vectorweather:VW:<hash>`) via `app.handleMessage`, so Freeboard-SK renders them on its dedicated Meteo layer with structured, unit-formatted `environment.*` data. New config: `enableMeteoSync`, `meteoSyncRadiusNm`, `meteoSyncLimit`, `meteoSyncIntervalMinutes`. Additive to the existing plain-text station Notes (both can run at once). Note: Freeboard 2.22.1's meteo popup shows only temperature + wind; other readings ride the stream for the SK Data Browser / newer clients. Requires the anchor-weather `GET /api/signalk/stations` response to include the new structured `observation`/`identity` blocks. Shared bbox/position/fetch logic extracted to `lib/geo.js`.
+
+### Fixed
+
+- Point forecasts (`getForecasts('point')`) now start at the current hour. Open-Meteo is requested with `timezone=UTC`/`past_days=0`, so its hourly series opens at 00:00 UTC of the current day — for positions west of UTC that is many hours in the past (e.g. 00:00 UTC = 17:00 the previous day in PDT). Freeboard-SK renders the *first* points it receives, so the forecast table was showing last evening. Elapsed hours are now trimmed (with a 1-hour grace to keep the in-progress hour).
+- Humidity now renders in Freeboard-SK's forecast/observation display: it reads `outside.absoluteHumidity` (×100 as a "%"), so the 0–1 relative-humidity ratio is now mirrored into `absoluteHumidity` alongside the SI-correct `relativeHumidity`. (Arguably a Freeboard-SK field-naming bug; this is the compatibility shim.)
+
 ## [0.2.0] - 2026-07-06
 
 ### Added

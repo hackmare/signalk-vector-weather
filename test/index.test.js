@@ -41,6 +41,53 @@ test('schema requires an API key and defaults baseUrl/cacheTTLMinutes/route+stat
   assert.equal(schema.properties.stationSyncRadiusNm.default, 25)
   assert.equal(schema.properties.stationSyncLimit.default, 100)
   assert.equal(schema.properties.stationSyncIntervalMinutes.default, 15)
+  // Meteo sync is additive and opt-in — off by default.
+  assert.equal(schema.properties.enableMeteoSync.default, false)
+  assert.equal(schema.properties.meteoSyncRadiusNm.default, 25)
+  assert.equal(schema.properties.meteoSyncLimit.default, 100)
+  assert.equal(schema.properties.meteoSyncIntervalMinutes.default, 15)
+})
+
+test('enableMeteoSync defaults off: handleMessage is never called unless explicitly enabled', async () => {
+  const app = fakeApp()
+  app.getSelfPath = () => ({ latitude: 49, longitude: -123 })
+  let handleMessageCalls = 0
+  app.handleMessage = () => { handleMessageCalls++ }
+  const plugin = createPlugin(app)
+
+  plugin.start({ apiKey: 'aw_test123', enableRouteSync: false, enableStationSync: false })
+  await new Promise((resolve) => setImmediate(resolve))
+
+  assert.equal(handleMessageCalls, 0)
+  plugin.stop()
+})
+
+test('enableMeteoSync: true publishes at least one meteo delta via handleMessage', async () => {
+  const app = fakeApp()
+  app.getSelfPath = (path) => (path === 'navigation.position' ? { latitude: 49.2827, longitude: -123.1443 } : undefined)
+  const messages = []
+  app.handleMessage = (id, delta) => messages.push({ id, delta })
+  // Feed the station fetch a single station without a real network call.
+  const station = {
+    station_uid: '11111111-1111-1111-1111-111111111111',
+    position: { latitude: 49.2827, longitude: -123.1443 },
+    identity: { station_name: 'English Bay' },
+    observation: { air_temp_c: 18.4, wind_speed_kt: 12.3, wind_dir_deg: 270 }
+  }
+  const originalFetch = global.fetch
+  global.fetch = async () => ({ ok: true, status: 200, json: async () => ({ ok: true, stations: [station] }), text: async () => '' })
+  const plugin = createPlugin(app)
+
+  try {
+    plugin.start({ apiKey: 'aw_test123', enableRouteSync: false, enableStationSync: false, enableMeteoSync: true })
+    await new Promise((resolve) => setImmediate(resolve))
+
+    assert.ok(messages.length >= 1, 'expected at least one meteo delta')
+    assert.match(messages[0].delta.context, /^meteo\.urn:mrn:vectorweather:VW:\d{9}$/)
+  } finally {
+    plugin.stop()
+    global.fetch = originalFetch
+  }
 })
 
 test('enableRouteSync: false never touches resourcesApi, even with it present', async () => {
