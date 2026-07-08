@@ -4,11 +4,18 @@ const assert = require('node:assert/strict')
 const {
   createWeatherService,
   toISO,
+  firstFutureIndex,
   mapCurrentToObservation,
   mapHourlyToPointForecasts,
   mapDailyToDailyForecasts,
   mapAssessmentToWater
 } = require('../lib/weather-service')
+
+// SAMPLE_FORECAST's hourly series starts at 2026-07-05T14:00Z. Pin "now" to just
+// before it so the current-hour trim in mapHourlyToPointForecasts keeps all
+// sample hours (they're the forecast, not the past) — see the trimming tests
+// below for the skip-elapsed-hours behaviour itself.
+const SAMPLE_NOW = Date.parse('2026-07-05T14:00:00Z')
 
 const SAMPLE_FORECAST = {
   current: {
@@ -78,6 +85,8 @@ test('mapCurrentToObservation maps units into SignalK SI shape', () => {
   assert.equal(obs.outside.cloudCover, 0.4)
   assert.ok(Math.abs(obs.outside.precipitationVolume - 0.0002) < 1e-12)
   assert.equal(obs.outside.relativeHumidity, 0.65)
+  // Mirrored for Freeboard-SK's humidity column (reads outside.absoluteHumidity).
+  assert.equal(obs.outside.absoluteHumidity, 0.65)
   assert.ok(Math.abs(obs.wind.speedTrue - 6.173328) < 1e-9)
   assert.ok(Math.abs(obs.wind.directionTrue - 4.71238898038469) < 1e-9)
 })
@@ -89,23 +98,26 @@ test('mapCurrentToObservation returns null for missing current block', () => {
 
 // --- mapHourlyToPointForecasts ------------------------------------------
 
-test('mapHourlyToPointForecasts maps every hour by default', () => {
-  const points = mapHourlyToPointForecasts(SAMPLE_FORECAST.hourly)
+test('mapHourlyToPointForecasts maps every future hour by default', () => {
+  const points = mapHourlyToPointForecasts(SAMPLE_FORECAST.hourly, undefined, SAMPLE_NOW)
   assert.equal(points.length, 3)
   assert.equal(points[0].type, 'point')
   assert.equal(points[2].description, 'Slight rain')
   assert.equal(points[1].outside.horizontalVisibility, 22000)
   assert.equal(points[1].outside.relativeHumidity, 0.68)
+  // Mirrored for Freeboard-SK's humidity column.
+  assert.equal(points[1].outside.absoluteHumidity, 0.68)
   assert.ok(Math.abs(points[2].outside.precipitationVolume - 0.0003) < 1e-12)
 })
 
-test('mapHourlyToPointForecasts respects maxCount', () => {
-  const points = mapHourlyToPointForecasts(SAMPLE_FORECAST.hourly, 2)
+test('mapHourlyToPointForecasts respects maxCount (counted from the current hour)', () => {
+  const points = mapHourlyToPointForecasts(SAMPLE_FORECAST.hourly, 2, SAMPLE_NOW)
   assert.equal(points.length, 2)
+  assert.equal(points[0].date, '2026-07-05T14:00:00.000Z')
 })
 
 test('mapHourlyToPointForecasts tolerates missing arrays', () => {
-  const points = mapHourlyToPointForecasts({ time: ['2026-07-05T14:00'] })
+  const points = mapHourlyToPointForecasts({ time: ['2026-07-05T14:00'] }, undefined, SAMPLE_NOW)
   assert.equal(points.length, 1)
   assert.equal(points[0].outside.temperature, undefined)
   assert.equal(points[0].wind.speedTrue, undefined)
@@ -114,6 +126,36 @@ test('mapHourlyToPointForecasts tolerates missing arrays', () => {
 test('mapHourlyToPointForecasts returns [] for missing/malformed hourly block', () => {
   assert.deepEqual(mapHourlyToPointForecasts(undefined), [])
   assert.deepEqual(mapHourlyToPointForecasts({}), [])
+})
+
+// --- current-hour trimming (the "forecast shows last evening" bug) -----
+
+test('firstFutureIndex skips elapsed hours, keeping the in-progress hour (1h grace)', () => {
+  const times = ['2026-07-05T12:00', '2026-07-05T13:00', '2026-07-05T14:00', '2026-07-05T15:00']
+  // now = 14:20Z -> cutoff 13:20Z -> 12:00/13:00 dropped, first kept hour is 14:00 (index 2).
+  assert.equal(firstFutureIndex(times, Date.parse('2026-07-05T14:20:00Z')), 2)
+  // now exactly on the hour: the 1h grace still keeps the prior top-of-hour
+  // (13:00 >= 13:00 cutoff), so it starts at index 1 — at most ~1h of lookback.
+  assert.equal(firstFutureIndex(times, Date.parse('2026-07-05T14:00:00Z')), 1)
+  // before the series starts keeps everything.
+  assert.equal(firstFutureIndex(times, Date.parse('2026-07-05T11:00:00Z')), 0)
+})
+
+test('mapHourlyToPointForecasts drops past hours so the series starts at "now"', () => {
+  const hourly = {
+    time: ['2026-07-05T00:00', '2026-07-05T01:00', '2026-07-05T02:00', '2026-07-05T03:00'],
+    temperature_2m: [10, 11, 12, 13]
+  }
+  // Open-Meteo opens the array at 00:00 UTC; at 02:10Z only 02:00 onward is live.
+  const points = mapHourlyToPointForecasts(hourly, undefined, Date.parse('2026-07-05T02:10:00Z'))
+  assert.equal(points.length, 2)
+  assert.equal(points[0].date, '2026-07-05T02:00:00.000Z')
+  assert.ok(Math.abs(points[0].outside.temperature - (12 + 273.15)) < 1e-9)
+})
+
+test('mapHourlyToPointForecasts returns [] when the whole series is in the past', () => {
+  const points = mapHourlyToPointForecasts(SAMPLE_FORECAST.hourly, undefined, Date.parse('2026-07-06T00:00:00Z'))
+  assert.deepEqual(points, [])
 })
 
 // --- mapDailyToDailyForecasts ------------------------------------------
@@ -197,7 +239,7 @@ test('getObservations builds the expected forecast request and maps the result',
 
 test('getForecasts("point") and getForecasts("daily") request forecast-only (past_days=0) and never touch /current', async () => {
   const fetchImpl = fakeFetchRouting({ forecast: SAMPLE_FORECAST, current: null })
-  const svc = createWeatherService({ apiKey: 'aw_test', baseUrl: 'https://example.test', fetchImpl })
+  const svc = createWeatherService({ apiKey: 'aw_test', baseUrl: 'https://example.test', fetchImpl, now: () => SAMPLE_NOW })
   const position = { latitude: 49, longitude: -123 }
 
   const points = await svc.getForecasts(position, 'point')
