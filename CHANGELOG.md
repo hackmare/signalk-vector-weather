@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.1] - 2026-07-08
+
+### Changed
+
+- Added App Store category keywords `signalk-category-cloud` and `signalk-category-chart-plotters` (alongside the existing `signalk-category-weather`) so the plugin is listed under those App Store categories.
+
 ## [0.3.0] - 2026-07-08
 
 ### Added
