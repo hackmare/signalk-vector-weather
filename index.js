@@ -95,6 +95,15 @@ const CONFIG_SCHEMA = {
       title: 'Meteo sync interval (minutes)',
       default: 15,
       description: 'How often to refresh the published meteo stations as the vessel moves.'
+    },
+    meteoSkipStationsWithoutLiveObs: {
+      type: 'boolean',
+      title: 'Skip stations with no live observations on the Meteo layer',
+      default: true,
+      description:
+        'Metadata-only stations (no current reading) would otherwise publish as a bare position+name ' +
+        'pin with no wind/temperature/pressure data. On by default so dataless pins don\'t clutter the ' +
+        'Meteo layer; turn off to publish every station in range regardless of live-data status.'
     }
   }
 }
@@ -169,7 +178,8 @@ module.exports = function (app) {
             pluginId: plugin.id,
             log: app.debug,
             radiusNm: options.meteoSyncRadiusNm,
-            limit: options.meteoSyncLimit
+            limit: options.meteoSyncLimit,
+            skipStationsWithoutLiveObs: options.meteoSkipStationsWithoutLiveObs
           })
           meteoSync.start(options.meteoSyncIntervalMinutes)
         }

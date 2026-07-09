@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.3.2] - 2026-07-09
+
+### Added
+
+- New Meteo layer option **`meteoSkipStationsWithoutLiveObs`** (default `true`): skips publishing a `meteo.*` context for stations with no live observation (`identity.has_live_observations === false`), so metadata-only stations don't clutter Freeboard's Meteo layer with dataless position+name pins. Set to `false` to publish every in-range station regardless of live-data status.
+
 ## [0.3.1] - 2026-07-08
 
 ### Changed

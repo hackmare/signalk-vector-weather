@@ -14,6 +14,15 @@ const STATION = {
   }
 }
 
+// A metadata-only station: no live reading, so its meteo context would be a
+// bare position+name pin with no environment.* data.
+const DATALESS_STATION = {
+  station_uid: '22222222-2222-2222-2222-222222222222',
+  position: { latitude: 49.3, longitude: -123.2 },
+  identity: { station_name: 'Metadata Only Station', primary_provider: 'ECCC_SWOB', freshness: 'metadata_only', has_live_observations: false },
+  observation: { wind_speed_kt: null, wind_dir_deg: null, gust_kt: null, pressure_hpa: null, air_temp_c: null, sea_surface_temp_c: null, wave_height_m: null, obs_time: null, trend: null }
+}
+
 // --- meteoContextFor -------------------------------------------------------
 
 test('meteoContextFor is deterministic and station-specific', () => {
@@ -147,6 +156,71 @@ test('syncOnce fetches a bbox around the vessel and publishes one meteo delta pe
   assert.equal(app.messages[0].delta.updates[0].$source, 'signalk-vector-weather.meteo')
 })
 
+// --- skipStationsWithoutLiveObs (dataless-pin filter) ----------------------
+
+test('by default (option omitted), a station with no live observations is skipped', async () => {
+  const fetchImpl = fakeFetchRouting({ stations: [STATION, DATALESS_STATION] })
+  const app = appWithMeteo()
+  const sync = createMeteoSync({ apiKey: 'aw_test', baseUrl: 'https://example.test', app, fetchImpl })
+
+  await sync.syncOnce()
+
+  assert.equal(app.messages.length, 1)
+  assert.equal(app.messages[0].delta.context, meteoContextFor(STATION.station_uid))
+  assert.deepEqual([...sync._knownMeteoIds()], [meteoContextFor(STATION.station_uid)])
+})
+
+test('skipStationsWithoutLiveObs: true explicitly skips stations with has_live_observations === false', async () => {
+  const fetchImpl = fakeFetchRouting({ stations: [STATION, DATALESS_STATION] })
+  const app = appWithMeteo()
+  const logs = []
+  const sync = createMeteoSync({
+    apiKey: 'aw_test',
+    baseUrl: 'https://example.test',
+    app,
+    fetchImpl,
+    skipStationsWithoutLiveObs: true,
+    log: (m) => logs.push(m)
+  })
+
+  await sync.syncOnce()
+
+  assert.equal(app.messages.length, 1)
+  assert.equal(app.messages[0].delta.context, meteoContextFor(STATION.station_uid))
+  assert.ok(logs.some((m) => /1 station\(s\) skipped/.test(m)))
+})
+
+test('skipStationsWithoutLiveObs: false publishes stations with no live observations too', async () => {
+  const fetchImpl = fakeFetchRouting({ stations: [STATION, DATALESS_STATION] })
+  const app = appWithMeteo()
+  const sync = createMeteoSync({
+    apiKey: 'aw_test',
+    baseUrl: 'https://example.test',
+    app,
+    fetchImpl,
+    skipStationsWithoutLiveObs: false
+  })
+
+  await sync.syncOnce()
+
+  assert.equal(app.messages.length, 2)
+  const contexts = app.messages.map((m) => m.delta.context)
+  assert.ok(contexts.includes(meteoContextFor(STATION.station_uid)))
+  assert.ok(contexts.includes(meteoContextFor(DATALESS_STATION.station_uid)))
+})
+
+test('a station without an identity block is never skipped by the filter (only explicit has_live_observations: false is)', async () => {
+  const noIdentity = { ...DATALESS_STATION, station_uid: '33333333-3333-3333-3333-333333333333', identity: undefined }
+  const fetchImpl = fakeFetchRouting({ stations: [noIdentity] })
+  const app = appWithMeteo()
+  const sync = createMeteoSync({ apiKey: 'aw_test', baseUrl: 'https://example.test', app, fetchImpl, skipStationsWithoutLiveObs: true })
+
+  await sync.syncOnce()
+
+  assert.equal(app.messages.length, 1)
+  assert.equal(app.messages[0].delta.context, meteoContextFor(noIdentity.station_uid))
+})
+
 test('a station that leaves the bbox is simply not re-published (no delete, client ages it out)', async () => {
   const app = appWithMeteo()
   let returnStation = true
@@ -163,7 +237,7 @@ test('a station that leaves the bbox is simply not re-published (no delete, clie
   // second sync published nothing new and left the known set empty
   assert.equal(app.messages.length, 1)
   assert.equal(sync._knownMeteoIds().size, 0)
-  assert.ok(logs.some((m) => /out of range/.test(m)))
+  assert.ok(logs.some((m) => /no longer published/.test(m)))
 })
 
 test('a failed fetch is caught and logged, not thrown, and leaves known ids intact', async () => {
