@@ -69,6 +69,8 @@ Optionally publishes the same nearby stations as SignalK `meteo.*` **stream cont
 
 Each station becomes a context `meteo.urn:mrn:vectorweather:VW:<9-digit hash of the station id>` (a self-owned namespace, so it can't collide with real AIS/vessel MMSI contexts; Freeboard displays it as `VW:123456789`). Emitted paths: `environment.wind.averageSpeed`/`speedTrue`/`gust`/`directionTrue`, `environment.outside.temperature`/`pressure`, `environment.water.temperature`, `environment.water.waves.significantHeight` — each with `meta` units, and any whose reading is missing is omitted.
 
+**Skip stations with no live observations** (`meteoSkipStationsWithoutLiveObs`, default **on**): a metadata-only station (no current reading) would otherwise still publish a bare position+name marker with no environment data — just a dataless pin. With this on, those stations are simply not published to the Meteo layer at all. Turn it off to publish every in-range station regardless of live-data status.
+
 Two caveats worth knowing:
 
 - **Freeboard 2.22.1's meteo popup renders only temperature and wind** (direction + average speed). Pressure, gust, waves and sea-surface temperature still ride the stream — visible in the Signal K Data Browser and rendered by newer/master Freeboard's generic `environment.*` popup — but not shown by 2.22.1's meteo popup. That's why this ships **additive and off by default**: the plain-text Note markers still carry every scalar, so you don't lose detail. Run both, or switch once your Freeboard build shows the richer meteo popup.

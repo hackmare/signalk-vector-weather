@@ -46,6 +46,7 @@ test('schema requires an API key and defaults baseUrl/cacheTTLMinutes/route+stat
   assert.equal(schema.properties.meteoSyncRadiusNm.default, 25)
   assert.equal(schema.properties.meteoSyncLimit.default, 100)
   assert.equal(schema.properties.meteoSyncIntervalMinutes.default, 15)
+  assert.equal(schema.properties.meteoSkipStationsWithoutLiveObs.default, true)
 })
 
 test('enableMeteoSync defaults off: handleMessage is never called unless explicitly enabled', async () => {
