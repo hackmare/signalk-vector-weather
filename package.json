@@ -1,6 +1,6 @@
 {
   "name": "signalk-vector-weather",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Vector Weather forecast provider for Signal K Server",
   "main": "index.js",
   "scripts": {
