@@ -316,12 +316,12 @@ test('a second getObservations call within the cache TTL does not re-fetch /curr
   assert.equal(currentCalls.length, 1)
 })
 
-test('getForecasts clamps maxCount into the 1-7 day range accepted by the backend', async () => {
+test('getForecasts clamps maxCount into the 1-16 day range accepted by the backend', async () => {
   const fetchImpl = fakeFetchReturning({ ok: true, forecast: SAMPLE_FORECAST })
   const svc = createWeatherService({ apiKey: 'aw_test', baseUrl: 'https://example.test', fetchImpl })
 
   await svc.getForecasts({ latitude: 49, longitude: -123 }, 'point', { maxCount: 30 })
-  assert.match(fetchImpl.calls[0].url, /forecast_days=7/)
+  assert.match(fetchImpl.calls[0].url, /forecast_days=16/)
 
   await svc.getForecasts({ latitude: 49, longitude: -123 }, 'point', { maxCount: 0 })
   assert.match(fetchImpl.calls[1].url, /forecast_days=1/)
