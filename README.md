@@ -39,13 +39,15 @@ Leave **Base URL** as the default unless you're pointed at a self-hosted or stag
 ## What it provides
 
 - `getObservations` — current conditions at a position (`type: 'observation'`), including wind. Also includes a `water.surfaceCurrentSpeed`/`surfaceCurrentDirection` block when Vector Weather's current-hazard-service has coverage at that position (most named passes/narrows/races; open water without a nearby station typically has none — this is normal, not an error).
-- `getForecasts(position, 'point')` — hourly forecast points, starting at the current hour. The upstream series opens at 00:00 UTC of the current day, so elapsed hours are trimmed (with a 1-hour grace) — otherwise a client that renders the first N points it receives (Freeboard-SK slices to 12) would show hours already in the past for positions west of UTC.
-- `getForecasts(position, 'daily')` — daily forecast summaries (wind only)
+- `getForecasts(position, 'point')` — hourly forecast points, starting at the current hour, up to the upstream 16-day maximum. The upstream series opens at 00:00 UTC of the current day, so elapsed hours are trimmed (with a 1-hour grace) — otherwise a client that renders the first N points it receives (Freeboard-SK slices to 12) would show hours already in the past for positions west of UTC.
+- `getForecasts(position, 'daily')` — daily forecast summaries (wind only), up to 16 days
 - `getWarnings` — not yet available from Vector Weather; always returns `[]`
 
 Relative humidity is emitted as the SI-correct `outside.relativeHumidity` (0–1 ratio) **and** mirrored into `outside.absoluteHumidity`, because Freeboard-SK's weather display reads `absoluteHumidity` (×100, labelled "%") for its humidity row — without the mirror that column shows `--`.
 
 Current is only merged into `getObservations`, not into `getForecasts`. Vector Weather's current-hazard-service answers a point/time query (not a real forecast series), so folding it into every hourly/daily point would multiply backend calls for what's really a "now" overlay rather than a multi-day forecast — a current/wind field overlay on a chartplotter is inherently live, refreshed as you pan or as time passes, not something you browse three days out.
+
+Forecast reliability decreases as the selected horizon becomes more distant. Treat the extended outlook as planning guidance and refresh it as departure approaches.
 
 ## Route syncing ("Send to boat")
 

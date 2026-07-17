@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- Weather API forecast requests now honor up to the source-data maximum of 16 days (previously capped at 7). Extended forecasts carry more uncertainty; refresh them as departure approaches.
+
 ## [0.3.2] - 2026-07-09
 
 ### Added
