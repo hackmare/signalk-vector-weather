@@ -8,7 +8,7 @@ Signal K plugin that bridges a [Vector Weather](https://anchor-weather.selkietec
 
 This plugin does not compute anything itself — it's a thin bridge to Vector Weather's own backend.
 
-[Vector Weather](https://vector-weather.selkietech.ca) is a hyperlocal weather routing and anchoring platform from [Selkie Technologies](https://selkietech.ca) — it has free components, but is overall a fee-for-service product. See the [user guide](https://vector-weather.selkietech.ca/guide) (requires a Vector Weather account login) for the app itself; this repo covers only the SignalK/Freeboard-SK bridge.
+[Vector Weather](https://anchor-weather.selkietech.ca) is a hyperlocal weather routing and anchoring platform from [Selkie Technologies](https://selkietech.ca). See the user guide in the Vector Weather app for the web product; this repository covers only the Signal K / Freeboard-SK bridge.
 
 ## Requirements
 
@@ -26,7 +26,7 @@ cd ~/.signalk
 npm install signalk-vector-weather
 ```
 
-Then restart the server and enable the plugin from **Server -> Plugin Config -> Vector Weather**.
+Then restart the server and enable the plugin from **Server -> Plugin Config -> Vector Weather**. The App Store install path is preferred because it tracks published updates.
 
 ## Configure
 
@@ -36,11 +36,15 @@ Then restart the server and enable the plugin from **Server -> Plugin Config -> 
 
 Leave **Base URL** as the default unless you're pointed at a self-hosted or staging Vector Weather instance.
 
+The API key is sent only to the configured Vector Weather base URL as the
+`X-Anchor-Weather-Key` request header. Treat it like a password: do not paste it
+into screenshots, issue reports, or client-side configuration.
+
 ## What it provides
 
 - `getObservations` — current conditions at a position (`type: 'observation'`), including wind. Also includes a `water.surfaceCurrentSpeed`/`surfaceCurrentDirection` block when Vector Weather's current-hazard-service has coverage at that position (most named passes/narrows/races; open water without a nearby station typically has none — this is normal, not an error).
 - `getForecasts(position, 'point')` — hourly forecast points, starting at the current hour, up to the upstream 16-day maximum. The upstream series opens at 00:00 UTC of the current day, so elapsed hours are trimmed (with a 1-hour grace) — otherwise a client that renders the first N points it receives (Freeboard-SK slices to 12) would show hours already in the past for positions west of UTC.
-- `getForecasts(position, 'daily')` — daily forecast summaries (wind only), up to 16 days
+- `getForecasts(position, 'daily')` — daily forecast summaries (wind only), up to 16 days.
 - `getWarnings` — not yet available from Vector Weather; always returns `[]`
 
 Relative humidity is emitted as the SI-correct `outside.relativeHumidity` (0–1 ratio) **and** mirrored into `outside.absoluteHumidity`, because Freeboard-SK's weather display reads `absoluteHumidity` (×100, labelled "%") for its humidity row — without the mirror that column shows `--`.
@@ -48,6 +52,11 @@ Relative humidity is emitted as the SI-correct `outside.relativeHumidity` (0–1
 Current is only merged into `getObservations`, not into `getForecasts`. Vector Weather's current-hazard-service answers a point/time query (not a real forecast series), so folding it into every hourly/daily point would multiply backend calls for what's really a "now" overlay rather than a multi-day forecast — a current/wind field overlay on a chartplotter is inherently live, refreshed as you pan or as time passes, not something you browse three days out.
 
 Forecast reliability decreases as the selected horizon becomes more distant. Treat the extended outlook as planning guidance and refresh it as departure approaches.
+
+Forecast and current responses are cached in the plugin for the configured TTL
+(10 minutes by default). A chartplotter can request fewer points through the
+Weather API's `maxCount` option; the plugin never requests more than 16 days
+from Vector Weather.
 
 ## Route syncing ("Send to boat")
 
@@ -81,3 +90,31 @@ Two caveats worth knowing:
 ## Scope
 
 Read-only in one direction (weather + station observations in), publish-only in the other (routes out) — nothing on the boat can trigger, edit, or pay for anything in Vector Weather. It does not yet publish anchor plans or bolt-hole markers — see the Vector Weather Freeboard-SK feasibility analysis for the full phased plan.
+
+## Maintaining and releasing
+
+The Signal K App Store discovers this package from npm because its
+`package.json` includes the `signalk-node-server-plugin` keyword; no separate
+App Store submission is required.
+
+Before a release, run the checks and inspect exactly what will be published:
+
+```bash
+npm test
+npm pack --dry-run
+npm whoami
+```
+
+After updating `package.json` and `CHANGELOG.md` to the new version, commit the
+release, publish that clean commit, then tag it:
+
+```bash
+npm publish
+git tag -a vX.Y.Z -m "Release vX.Y.Z"
+git push origin main vX.Y.Z
+```
+
+Confirm npm has the intended release with `npm view signalk-vector-weather
+version dist-tags`. The App Store refreshes its npm listing automatically.
+Do not depend on `install`, `preinstall`, or `postinstall` scripts: Signal K's
+App Store does not run them, so the npm tarball must already be ready to use.

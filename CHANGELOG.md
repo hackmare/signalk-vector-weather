@@ -7,6 +7,7 @@ All notable changes to this project are documented here. Format loosely follows 
 ### Changed
 
 - Weather API forecast requests now honor up to the source-data maximum of 16 days (previously capped at 7). Extended forecasts carry more uncertainty; refresh them as departure approaches.
+- Documentation now explains forecast caching, 16-day request limits, API-key handling, and the npm-to-Signal-K-App-Store release process.
 
 ## [0.3.2] - 2026-07-09
 
