@@ -2,6 +2,7 @@ const { createWeatherService } = require('./lib/weather-service')
 const { createRouteSync } = require('./lib/route-sync')
 const { createStationSync } = require('./lib/station-sync')
 const { createMeteoSync } = require('./lib/meteo-sync')
+const { createPositionSync } = require('./lib/position-sync')
 
 const DEFAULT_BASE_URL = 'https://anchor-weather.selkietech.ca'
 
@@ -104,6 +105,23 @@ const CONFIG_SCHEMA = {
         'Metadata-only stations (no current reading) would otherwise publish as a bare position+name ' +
         'pin with no wind/temperature/pressure data. On by default so dataless pins don\'t clutter the ' +
         'Meteo layer; turn off to publish every station in range regardless of live-data status.'
+    },
+    recordTrack: {
+      type: 'boolean',
+      title: 'Record vessel track on Vector Weather',
+      default: false,
+      description:
+        'Uploads this boat\'s position (with speed, course and heading when available) to Vector Weather, ' +
+        'which keeps a 30-day breadcrumb trail you can view in the app even when the app is not open. ' +
+        'Fixes recorded while offline are buffered on this server and sent when the connection returns. ' +
+        'Off by default: it shares your position history with your Vector Weather account.'
+    },
+    trackIntervalSeconds: {
+      type: 'integer',
+      title: 'Track recording interval (seconds)',
+      default: 60,
+      minimum: 15,
+      description: 'How often to record a position fix for the track.'
     }
   }
 }
@@ -113,6 +131,7 @@ module.exports = function (app) {
   let routeSync = null
   let stationSync = null
   let meteoSync = null
+  let positionSync = null
 
   const plugin = {
     id: 'signalk-vector-weather',
@@ -184,6 +203,18 @@ module.exports = function (app) {
           meteoSync.start(options.meteoSyncIntervalMinutes)
         }
 
+        if (options.recordTrack === true) {
+          positionSync = createPositionSync({
+            apiKey: options.apiKey,
+            baseUrl,
+            app,
+            log: app.debug,
+            // The 409 "no vessel" message needs to reach the owner, not just debug output.
+            warn: typeof app.error === 'function' ? app.error : app.debug
+          })
+          positionSync.start(options.trackIntervalSeconds)
+        }
+
         app.setPluginStatus('Started')
       } catch (err) {
         app.setPluginError(err.message)
@@ -204,6 +235,10 @@ module.exports = function (app) {
       if (meteoSync) {
         meteoSync.stop()
         meteoSync = null
+      }
+      if (positionSync) {
+        positionSync.stop()
+        positionSync = null
       }
       app.setPluginStatus('Stopped')
     }
