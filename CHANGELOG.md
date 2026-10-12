@@ -2,6 +2,12 @@
 
 All notable changes to this project are documented here. Format loosely follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [0.4.0] - 2026-10-11
+
+### Added
+
+- Vessel track ("breadcrumbs"), opt-in via **`recordTrack`** (default `false`): records the boat's position every **`trackIntervalSeconds`** (default 60, minimum 15) and uploads it to Vector Weather's `POST /api/signalk/positions`, so the app shows a 30-day track even when it isn't open. Each fix carries UTC time, lat/lon and, when available, SOG (kt), COG and heading (true degrees; magnetic heading is used only together with magnetic variation). Stale GPS fixes (>2 min old) are skipped. Fixes are buffered while offline (persisted to the plugin data dir, capped at 20,000, >30-day-old fixes dropped) and sent oldest-first in batches of up to 500. A 409 (no vessel on the account) pauses recording for an hour; 422 drops the offending batch; 429/5xx/network errors keep the buffer for the next interval. Failure logging is throttled to the first failure, then every ~30 min, plus recovery.
+
 ## [0.3.3] - 2026-07-17
 
 ### Changed

@@ -87,9 +87,41 @@ Two caveats worth knowing:
 - **Freeboard 2.22.1's meteo popup renders only temperature and wind** (direction + average speed). Pressure, gust, waves and sea-surface temperature still ride the stream — visible in the Signal K Data Browser and rendered by newer/master Freeboard's generic `environment.*` popup — but not shown by 2.22.1's meteo popup. That's why this ships **additive and off by default**: the plain-text Note markers still carry every scalar, so you don't lose detail. Run both, or switch once your Freeboard build shows the richer meteo popup.
 - **There is no way to actively remove a stream marker** — SignalK stream contexts have no delete API and no server-side TTL, and Freeboard ignores a null position for meteo. A station that leaves the bbox is simply no longer refreshed; its marker lingers until the client ages it out on its own timer.
 
+## Vessel track (breadcrumbs)
+
+Optionally uploads this boat's own position history to Vector Weather, so the
+app can show a breadcrumb trail of where the vessel has been — recorded 24/7 by
+the boat itself, even when nobody has the Vector Weather app open. **Off by
+default**: enable **Record vessel track on Vector Weather** (`recordTrack`) in
+Plugin Config. The API key must belong to an account with a vessel (a
+vessel-scoped key is the natural fit); if the account has none, the plugin logs
+a clear error, discards what it had buffered, and tries again an hour later.
+
+**What is sent.** Every **Track recording interval** (`trackIntervalSeconds`,
+default 60 s, minimum 15 s) the plugin reads `navigation.position` and sends one
+fix to `POST /api/signalk/positions`: the UTC time of the fix, latitude and
+longitude, plus — only when the boat's instruments provide them — speed over
+ground (knots, from `navigation.speedOverGround`), course over ground (true
+degrees, from `navigation.courseOverGroundTrue`) and heading (true degrees, from
+`navigation.headingTrue`, or `headingMagnetic` + `magneticVariation` when both
+exist). A position whose Signal K timestamp is more than 2 minutes old (GPS
+stopped updating) is not recorded. Nothing else about the boat is sent.
+
+**Retention.** The server keeps the track for 30 days and may thin or
+de-duplicate nearby fixes, so its stored count can be lower than what was sent.
+
+**Offline buffering.** Fixes recorded while the boat has no internet (or Vector
+Weather is unreachable) are queued and uploaded oldest-first, up to 500 per
+request, once the connection returns. While anything is queued it is saved to
+`track-buffer.json` in the plugin's data directory, so it also survives a
+Signal K server restart; the queue holds at most 20,000 fixes (about two weeks
+at the default interval — the oldest are dropped first), and fixes older than
+30 days are discarded since the server would refuse them. When the connection is
+healthy the queue drains every interval and nothing is written to disk.
+
 ## Scope
 
-Read-only in one direction (weather + station observations in), publish-only in the other (routes out) — nothing on the boat can trigger, edit, or pay for anything in Vector Weather. It does not yet publish anchor plans or bolt-hole markers — see the Vector Weather Freeboard-SK feasibility analysis for the full phased plan.
+Read-only in one direction (weather + station observations in), publish-only in the other (routes out; and, only if you opt in, the vessel's own track up to Vector Weather) — nothing on the boat can trigger, edit, or pay for anything in Vector Weather. It does not yet publish anchor plans or bolt-hole markers — see the Vector Weather Freeboard-SK feasibility analysis for the full phased plan.
 
 ## Maintaining and releasing
 
